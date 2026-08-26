@@ -249,7 +249,10 @@ while IFS= read -r line; do
 	case "${verdict}" in
 		KEEP)
 			KEPT=$((KEPT + 1))
-			log "KEEP   $(snap_name "${DB_NAME}" "${stamp}") (${reasons})"
+			# Named with its server, like the DELETE lines below: one
+			# database versioned to several targets in a run otherwise
+			# prints several indistinguishable blocks of KEEP lines.
+			log "KEEP   $(snap_name "${DB_NAME}" "${stamp}") on ${TARG_HOST} (${reasons})"
 			;;
 		DELETE)
 			TO_DELETE+=("${stamp}")
@@ -283,7 +286,7 @@ if [ "${#TO_DELETE[@]}" -gt "${MAX_DELETE}" ]; then
 		# though a real run would stop here.
 		log_err "a real run would stop here; the ${#TO_DELETE[@]} snapshots it would have deleted are:"
 		for stamp in "${TO_DELETE[@]}"; do
-			log_err "  would delete $(snap_name "${DB_NAME}" "${stamp}")"
+			log_err "  would delete $(snap_name "${DB_NAME}" "${stamp}") on ${TARG_HOST}"
 		done
 	fi
 	log_err "review the list with --dry-run true, then raise --max-delete deliberately if it is correct"

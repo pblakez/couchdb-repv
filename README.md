@@ -397,10 +397,10 @@ INFO: versioning app_meta on 192.168.66.31:5984 (keep daily=7 weekly=5 monthly=1
 INFO: found 5 existing snapshot(s) of app_meta on 192.168.66.31:5984
 INFO: CREATE app_meta_snap_20260825-132338 on 192.168.66.31:5984 from app_meta (3 docs)
 INFO: OK snapshot app_meta_snap_20260825-132338 verified: doc_count=3, docs_read=3 docs_written=3
-INFO: KEEP   app_meta_snap_20260825-132338 (daily,weekly,monthly,yearly)
-INFO: KEEP   app_meta_snap_20260824-020500 (daily)
-INFO: KEEP   app_meta_snap_20260823-020500 (daily,weekly)
-INFO: KEEP   app_meta_snap_20260820-020500 (daily)
+INFO: KEEP   app_meta_snap_20260825-132338 on 192.168.66.31:5984 (daily,weekly,monthly,yearly)
+INFO: KEEP   app_meta_snap_20260824-020500 on 192.168.66.31:5984 (daily)
+INFO: KEEP   app_meta_snap_20260823-020500 on 192.168.66.31:5984 (daily,weekly)
+INFO: KEEP   app_meta_snap_20260820-020500 on 192.168.66.31:5984 (daily)
 INFO: retention: 6 kept, 0 to delete (of 6 snapshots)
 INFO: FIN: app_meta on 192.168.66.31:5984: snapshot 20260825-132338, 6 kept, 0 deleted
 INFO: replicate app_meta: 192.168.66.30:5984 -> 192.168.66.31:5984 (driven by 192.168.66.31:5984, continuous=false, dry-run=false)
@@ -417,7 +417,9 @@ INFO: FIN: 0 failure(s)
 ```
 
 Every `KEEP` line says **why** that snapshot survived, so a surprising survivor
-can always be explained from the log.
+can always be explained from the log, and **which server it survived on** — one
+database versioned to several targets in a run prints one block of `KEEP` lines
+per target, and they are otherwise identical.
 
 ### The per-database summary
 
