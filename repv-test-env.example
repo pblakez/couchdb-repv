@@ -1,0 +1,25 @@
+# repv-test-env.example - credentials for the two servers in the test servers
+#                         table. Never committed.
+#
+#     cp repv-test-env.example .repv-test-env
+#     chmod 600 .repv-test-env
+#     $EDITOR .repv-test-env
+#
+# Or point CDB_TEST_ENV somewhere else. The suite REFUSES to read a credentials
+# file that is group- or other-readable, exactly as the tool does in production.
+#
+# One <host>_USER and one <host>_PASS per server in .repv-test-servers.csv,
+# keyed by the hostname in its url without the port. A port-qualified key
+# (192.168.66.30:5984_USER) wins over the bare hostname if you need it.
+#
+# These are throwaway test-server credentials. Do not reuse a password from
+# anything real here, and do not point this file at a production account: the
+# suite deletes databases with whatever account you give it.
+#
+# See repv-env.example for the full description of the format.
+
+192.168.66.30_USER=admin
+192.168.66.30_PASS=CHANGE_ME
+
+192.168.66.31_USER=admin
+192.168.66.31_PASS=CHANGE_ME

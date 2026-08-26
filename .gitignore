@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# credentials and local config - NEVER commit
+# ---------------------------------------------------------------------------
+#
+# Only *.example configuration files belong in this repository. A real inventory
+# names real databases, a real servers table names real machines, and a real env
+# file holds real passwords: none of the three is ours to publish.
+
+.env
+.env.*
+*-env
+.repv-env
+.repv-test-env
+.couchdb-*env
+
+# real configs, next to the examples they were copied from
+repv-inventory.csv
+repv-servers.csv
+.repv-test-inventory.csv
+.repv-test-servers.csv
+
+# ...but the examples themselves are the point
+!*.example
+
+# ---------------------------------------------------------------------------
+# editor and tooling droppings
+# ---------------------------------------------------------------------------
+*~
+*.bak
+*.bak[0-9]
+*.orig
+*.rej
+.aider*
+.DS_Store
