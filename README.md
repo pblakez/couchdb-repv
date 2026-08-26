@@ -408,8 +408,8 @@ INFO: app_meta: 3 docs updated in 2s
 INFO: app_meta: lifetime totals docs_read=3 docs_written=3 doc_write_failures=0 (cumulative, NOT this run)
 INFO: FIN: app_meta: 192.168.66.30:5984 -> 192.168.66.31:5984 OK (target doc_count 3 -> 3)
 INFO: FIN: per-database summary
-INFO: FIN:   DATABASE  TARGET             VERSIONS   DOCS UPD    TIME
-INFO: FIN:   app_meta  192.168.66.31:5984         6          3      2s
+INFO: FIN:   DATABASE  SOURCE              TARGET              VERSIONS   DOCS UPD    TIME
+INFO: FIN:   app_meta  192.168.66.30:5984  192.168.66.31:5984         6          3      2s
 INFO: FIN: rows 1 processed of 1 usable (0 unparsable, 0 failed preflight)
 INFO: FIN: versioning 1 OK, 0 skipped (no target db yet), 0 FAILED
 INFO: FIN: replication 1 OK, 0 skipped
@@ -425,17 +425,18 @@ Every run ends with one line per processed row, in inventory order:
 
 ```
 FIN: per-database summary
-FIN:   DATABASE             TARGET             VERSIONS   DOCS UPD    TIME
-FIN:   orders      192.168.66.31:5984         1          2      6s   1 snapshot(s) pruned
-FIN:   app_meta             192.168.66.31:5984         1          0      7s   already current
-FIN:   orders_test 192.168.66.31:5984         -          0      4s   mirror-only, no snapshots
-FIN:   orders_test 192.168.66.30:5984         0          9      5s   first copy, nothing to snapshot yet
+FIN:   DATABASE     SOURCE              TARGET              VERSIONS   DOCS UPD    TIME
+FIN:   orders       192.168.66.30:5984  192.168.66.31:5984         1          2      6s   1 snapshot(s) pruned
+FIN:   app_meta     192.168.66.30:5984  192.168.66.31:5984         1          0      7s   already current
+FIN:   orders_test  192.168.66.30:5984  192.168.66.31:5984         -          0      4s   mirror-only, no snapshots
+FIN:   orders_test  192.168.66.31:5984  192.168.66.30:5984         0          9      5s   first copy, nothing to snapshot yet
 ```
 
 | column | meaning |
 |---|---|
 | `DATABASE` | database name. **Not** unique — the same database replicated to two targets is two rows. |
-| `TARGET` | which server this row wrote to. This is what tells those two rows apart. |
+| `SOURCE` | which server this row read from. |
+| `TARGET` | which server this row wrote to. `SOURCE` and `TARGET` together are what tell those two rows apart. |
 | `VERSIONS` | snapshots of this database now kept on that target. `-` means the row is mirror-only (`keep` is `none`), so no snapshot is ever taken. |
 | `DOCS UPD` | documents **this run** actually wrote. `0` with `already current` means the target was up to date — not that the row was skipped. |
 | `TIME` | wall-clock for the whole row, versioning plus replication. Excludes `--sleep`, which is pacing, not work. |
