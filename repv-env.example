@@ -1,0 +1,41 @@
+# repv-env.example - template for the --env file.
+#
+# Copy to eg /root/.couchdb-prod-env and chmod 600 it. The scripts REFUSE to
+# read a credentials file that is group- or other-readable.
+#
+#     cp repv-env.example /root/.couchdb-prod-env
+#     chmod 600 /root/.couchdb-prod-env
+#
+# One <host>_USER and one <host>_PASS per CouchDB server. The <host> part is the
+# hostname or IP without the port, exactly as it appears in the servers table
+# (repv-servers.csv) - or, for an older inventory that spells its URLs out in
+# full, in that file's ${...} tokens.
+#
+# Nothing here names an alias. An inventory row saying 'bak1' is resolved to a
+# URL by the servers table, and the credentials are then looked up by the
+# hostname that URL contains. Renaming an alias therefore never touches this
+# file; moving a server to a new IP does.
+#
+# If two CouchDBs share one box on different ports, a port-qualified key wins
+# over the bare hostname:
+#
+#     192.168.66.9:6984_USER=admin
+#     192.168.66.9:6984_PASS=CHANGE_ME
+#
+# Almost every fleet only ever needs the bare hostname form below.
+#
+# These keys contain dots, so they are NOT valid shell variable names: this file
+# is parsed by the scripts, never `source`d, and never passed through eval.
+#
+# Values are taken verbatim after an optional single layer of matching quotes,
+# so a password may contain = # $ { } and spaces. Do not add a trailing comment
+# on a value line - it would become part of the password.
+
+couchdb.example.com_USER=admin
+couchdb.example.com_PASS=CHANGE_ME
+
+203.0.113.10_USER=admin
+203.0.113.10_PASS=CHANGE_ME
+
+192.168.66.9_USER=admin
+192.168.66.9_PASS=CHANGE_ME

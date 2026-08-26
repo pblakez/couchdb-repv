@@ -1,0 +1,53 @@
+# repv-inventory.csv - what to replicate, and how long to keep it.
+#
+# One row per database per target. To back one database up to two targets,
+# write two rows.
+#
+# The header row is authoritative: column ORDER is free, but a missing column is
+# a startup error rather than a silently shifted field. Blank lines and # lines
+# are ignored. Fields are split on commas with no quoting, which is exact here
+# because neither a CouchDB database name nor an alias can contain a comma.
+#
+#   src-svr    where the data comes from
+#   targ-svr   where the mirror and its snapshots live
+#   rep-svr    the node whose /_replicate performs the copy. It must reach BOTH
+#              src-svr and targ-svr. Usually that is the target, which pulls -
+#              but a cloud node cannot reach a 192.168.x source, so for those
+#              rows it has to be the LAN node. This is why rep-svr is per row.
+#   db-name    same name at both ends
+#   keep       retention, applied to <db>_snap_<YYYYMMDD-HHMMSS> snapshots on
+#              targ-svr. Snapshots outside the keep set are DELETED.
+#              daily/weekly/monthly/yearly, eg 7/5/12/7 (about 31 copies), or
+#              'none' for mirror-only: replicate but never snapshot, and so
+#              never prune. 0/0/0/0 is refused - it would select every existing
+#              snapshot for deletion. Write 'none' for that intent.
+#
+# Every server column is an ALIAS defined in the --servers table; see
+# repv-servers.csv.example. An inventory never holds a URL and never holds a
+# credential - those come from the --env file, looked up by the hostname the
+# alias resolves to. That is what lets this file be short enough to read at a
+# glance and safe enough to commit.
+#
+# Check an edit before the nightly run has to live with it. This resolves the
+# inventory, the servers table and the credentials and prints what they mean,
+# without a lock, a network call or a write:
+#
+#     couchdb-repv.sh \
+#         --inventory /root/couchdb-repv/repv-inventory.csv \
+#         --servers   /root/couchdb-repv/repv-servers.csv \
+#         --env       /root/couchdb-repv/.repv-env \
+#         --check
+#
+src-svr,targ-svr,rep-svr,db-name,keep
+
+# production -> the two LAN backup nodes
+cloud,bak1,bak1,app_meta,7/5/12/7
+cloud,bak2,bak2,app_meta,7/5/12/7
+cloud,bak1,bak1,orders,7/5/12/7
+
+# mirrored nightly, never snapshotted
+cloud,bak1,bak1,orders_test,none
+
+# LAN -> cloud: the cloud node cannot reach a 192.168.x source, so the LAN node
+# drives the copy. Read the row as "from bak2 to cloud, driven by bak1".
+bak2,cloud,bak1,ledger_test,7/5/12/7

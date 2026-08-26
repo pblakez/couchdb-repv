@@ -1,0 +1,51 @@
+# repv-servers.csv - the alias table: what each short name in an inventory
+#                       means. ONE table for the whole fleet.
+#
+# Name it whatever suits the job and pass it with --servers. One table can serve
+# every job on a host, or each job can have its own:
+#
+#     cp repv-servers.csv.example /root/couchdb-repv/repv-servers.csv
+#
+# This file holds NO credentials, and that is the point of it being separate
+# from the --env file. It is meant to be committed and reviewed: when a backup
+# turns out to be missing, "which box was bak1 in August?" has to be answerable
+# from git, and it cannot be if the topology lives in a 0600 file nobody reads.
+#
+# The header row is authoritative - column order is free, but a missing column
+# is a startup error rather than a silently shifted field. Blank lines and #
+# lines are ignored. There is no quoting: neither an alias nor these URLs can
+# contain a comma.
+#
+#   alias   what an inventory row writes in its src-svr / targ-svr / rep-svr
+#           columns. Letters, digits, . _ - only. It can never contain '://',
+#           which is what lets an inventory tell an alias from a full URL.
+#   url     scheme://host[:port], no path, NO credentials.
+#
+# Name aliases after the BOX, not the role. The same machine is the targ-svr of
+# one row and the rep-svr of another - SRC_/TARG_/REP_ prefixes would force it
+# to appear twice under two names, and the two would drift apart.
+#
+# Two aliases may point at one box if you want both names; the first one listed
+# is the one used in log lines. A duplicate alias is an error, not last-wins.
+#
+# Credentials come from the --env file, looked up by the hostname below:
+# 192.168.66.5 here wants 192.168.66.5_USER and 192.168.66.5_PASS there. If two
+# CouchDBs share a box on different ports, a port-qualified key
+# (192.168.66.5:6984_USER) takes precedence over the bare hostname.
+#
+# A url here carrying credentials is REFUSED, not warned about. The env file is
+# the only source: a second one means two places to look when a password stops
+# working, and puts a secret in the one config file meant to be committed.
+#
+alias,url
+
+# the LAN backup nodes
+bak1,http://192.168.66.5:5984
+bak2,http://192.168.66.11:5984
+
+# the CloudVendor production node
+cloud,http://203.0.113.10:5984
+
+# the test VMs
+test0,http://192.168.66.30:5984
+test1,http://192.168.66.31:5984

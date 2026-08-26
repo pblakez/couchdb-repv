@@ -1,0 +1,35 @@
+# repv-test-inventory.csv.example - an inventory for driving the tool by hand
+#                                   against your two test servers.
+#
+#     cp repv-test-inventory.csv.example .repv-test-inventory.csv
+#
+# tests/integration.sh does NOT read this file - it generates its own inventory
+# per case, because most of what it checks is how a malformed one is rejected.
+# This is for the manual smoke run: proving your test fleet works before you
+# trust the same three files against a real one.
+#
+#     ./couchdb-repv.sh \
+#         --inventory .repv-test-inventory.csv \
+#         --servers   .repv-test-servers.csv \
+#         --env       .repv-test-env \
+#         --check
+#
+#     ./couchdb-repv.sh \
+#         --inventory .repv-test-inventory.csv \
+#         --servers   .repv-test-servers.csv \
+#         --env       .repv-test-env \
+#         --dry-run
+#
+# --check touches no network. --dry-run talks to both servers but changes
+# nothing. Drop --dry-run only once you are happy with what it printed - the
+# real run creates and prunes databases on test1.
+#
+# Create zz_test_smoke on test0 first, or the row is dropped at preflight with
+# 'source database does not exist', which is itself a fair thing to see once.
+#
+# The zz_test_ prefix is what tests/integration.sh teardown removes, so a
+# database named this way can be cleaned up with the rest.
+#
+src-svr,targ-svr,rep-svr,db-name,keep
+
+test0,test1,test1,zz_test_smoke,7/5/12/7

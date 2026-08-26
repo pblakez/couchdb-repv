@@ -1,0 +1,34 @@
+# repv-test-servers.csv.example - the two servers tests/integration.sh drives.
+#
+#     cp repv-test-servers.csv.example .repv-test-servers.csv
+#     $EDITOR .repv-test-servers.csv
+#
+# Or leave this file alone and point CDB_TEST_SERVERS somewhere else.
+#
+# READ THIS FIRST. The integration suite CREATES AND DELETES DATABASES on both
+# of these servers. Every database it makes is prefixed zz_test_ and teardown
+# only ever removes that prefix, but a bug in the code under test is exactly
+# what the suite exists to find. Point it at two CouchDB instances you would be
+# happy to destroy and rebuild - a pair of containers, a pair of scratch VMs -
+# and never at anything holding data you would miss.
+#
+# There is no default. The suite refuses to start until this file exists, so
+# there is no way to run it accidentally against whatever happens to be nearby.
+#
+# Exactly two aliases, named exactly this:
+#
+#   test0   the source: the suite writes documents here and replicates them out
+#   test1   the target: mirrors and snapshots land here, and get pruned here
+#
+# They must be two different servers - the suite replicates between them.
+#
+# The format is the tool's own servers table (see repv-servers.csv.example), and
+# it is read by the same parser: no credentials in the url, scheme://host[:port]
+# with no path. The suite pins itself to plain http, because it writes these
+# urls back out into the throwaway servers tables it generates and matches log
+# lines on them.
+#
+alias,url
+
+test0,http://192.168.66.30:5984
+test1,http://192.168.66.31:5984
