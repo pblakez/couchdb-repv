@@ -534,9 +534,9 @@ REP_SKIPPED=0
 declare -a REP_FAILED=()
 
 # Per-database summary, one entry per PROCESSED row. A database can legitimately
-# appear more than once with different targets, so the target is carried too and
-# the row - not the database name - is the key.
-declare -a SUM_DB=() SUM_TARG=() SUM_VERSIONS=() SUM_UPDATED=() SUM_SECS=() SUM_NOTE=()
+# appear more than once with different source/target pairs, so both aliases are
+# carried too and the row - not the database name - is the key.
+declare -a SUM_DB=() SUM_SRC=() SUM_TARG=() SUM_VERSIONS=() SUM_UPDATED=() SUM_SECS=() SUM_NOTE=()
 
 # read_results <file> - parse a child's key=value lines into RES_* globals.
 # Keys are whitelisted: this reads a file written by our own children, but
@@ -636,7 +636,7 @@ for (( r = 0; r < ROW_COUNT; r++ )); do
 				REP_SKIPPED=$((REP_SKIPPED + 1))
 				log_err "ROW ${line}: SKIP replicate ${db}: versioning failed, refusing to overwrite ${targ_label}/${db} with its previous state unpreserved"
 				read_results "${CDB_RESULT_FILE}"
-				SUM_DB+=("${db}"); SUM_TARG+=("${targ_label}")
+				SUM_DB+=("${db}"); SUM_SRC+=("${src_label}"); SUM_TARG+=("${targ_label}")
 				SUM_VERSIONS+=("${RES_ver_kept:--}"); SUM_UPDATED+=("-")
 				SUM_SECS+=("$(( $(date +%s) - ROW_T0 ))"); SUM_NOTE+=("VERSIONING FAILED, not replicated")
 				sleep "${SLEEP_FOR}"
@@ -693,7 +693,7 @@ for (( r = 0; r < ROW_COUNT; r++ )); do
 		row_note="${row_note:+${row_note}; }${RES_ver_deleted} snapshot(s) pruned"
 	fi
 
-	SUM_DB+=("${db}"); SUM_TARG+=("${targ_label}")
+	SUM_DB+=("${db}"); SUM_SRC+=("${src_label}"); SUM_TARG+=("${targ_label}")
 	SUM_VERSIONS+=("${row_versions}"); SUM_UPDATED+=("${row_updated}")
 	SUM_SECS+=("${ROW_SECS}"); SUM_NOTE+=("${row_note}")
 
@@ -709,27 +709,28 @@ TS_END="$(date '+%Y-%m-%d %H:%M:%S')"
 # ---- per-database table ---------------------------------------------------
 #
 # One line per PROCESSED row, in inventory order. A database may appear twice
-# with different targets, so the target column is not decoration - it is what
-# makes two rows for the same name tellable apart.
+# with a different source or a different target, so those two columns are not
+# decoration - they are what makes two rows for the same name tellable apart.
 #
 # DOCS UPD is the work THIS run did, derived in couch_replicate: 0 means the
 # target was already current, not that the copy was skipped. It is deliberately
 # not docs_read/docs_written, which are cumulative lifetime totals.
 if [ "${#SUM_DB[@]}" -ne 0 ]; then
-	w_db=8; w_targ=6
+	w_db=8; w_src=6; w_targ=6
 	for (( i = 0; i < ${#SUM_DB[@]}; i++ )); do
 		[ "${#SUM_DB[i]}" -gt "${w_db}" ]     && w_db="${#SUM_DB[i]}"
+		[ "${#SUM_SRC[i]}" -gt "${w_src}" ]   && w_src="${#SUM_SRC[i]}"
 		[ "${#SUM_TARG[i]}" -gt "${w_targ}" ] && w_targ="${#SUM_TARG[i]}"
 	done
 
 	log "FIN: per-database summary"
 	# shellcheck disable=SC2059  # the format string is built, not user input
-	log "$(printf "FIN:   %-${w_db}s  %-${w_targ}s  %8s  %9s  %6s" \
-		"DATABASE" "TARGET" "VERSIONS" "DOCS UPD" "TIME")"
+	log "$(printf "FIN:   %-${w_db}s  %-${w_src}s  %-${w_targ}s  %8s  %9s  %6s" \
+		"DATABASE" "SOURCE" "TARGET" "VERSIONS" "DOCS UPD" "TIME")"
 	for (( i = 0; i < ${#SUM_DB[@]}; i++ )); do
 		# shellcheck disable=SC2059
-		line_out="$(printf "FIN:   %-${w_db}s  %-${w_targ}s  %8s  %9s  %5ss" \
-			"${SUM_DB[i]}" "${SUM_TARG[i]}" "${SUM_VERSIONS[i]}" "${SUM_UPDATED[i]}" "${SUM_SECS[i]}")"
+		line_out="$(printf "FIN:   %-${w_db}s  %-${w_src}s  %-${w_targ}s  %8s  %9s  %5ss" \
+			"${SUM_DB[i]}" "${SUM_SRC[i]}" "${SUM_TARG[i]}" "${SUM_VERSIONS[i]}" "${SUM_UPDATED[i]}" "${SUM_SECS[i]}")"
 		[ -n "${SUM_NOTE[i]}" ] && line_out="${line_out}   ${SUM_NOTE[i]}"
 		log "${line_out}"
 	done
