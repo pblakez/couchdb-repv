@@ -690,6 +690,75 @@ json_escape_string () {
 	printf '%s' "${s}"
 }
 
+# ---------------------------------------------------------------------------
+# the run summary as JSON (--summary-json)
+# ---------------------------------------------------------------------------
+#
+# The FIN: lines are written for a person reading syslog; their spacing and
+# wording are free to change. A dashboard that wants each row's result needs a
+# contract instead, so the entry point can also write the same facts as one JSON
+# document. These two functions build it and are pure - no CouchDB, no files -
+# so the format is tested offline like retention_select.
+
+# json_quote <s> - <s> as a JSON string literal, quotes included. Unlike
+# json_escape_string this also escapes control characters: notes and error
+# text can carry a tab or a newline from a server's reply, and one raw newline
+# would make the whole document unparseable.
+json_quote () {
+	local s="$1" out="" c i
+	s="${s//\\/\\\\}"
+	s="${s//\"/\\\"}"
+	s="${s//$'\n'/\\n}"
+	s="${s//$'\r'/\\r}"
+	s="${s//$'\t'/\\t}"
+	# Any other control character is dropped rather than encoded: nothing this
+	# tool writes should contain one, and \u escapes are not worth the code.
+	for (( i = 0; i < ${#s}; i++ )); do
+		c="${s:i:1}"
+		[[ "${c}" == [[:cntrl:]] ]] && continue
+		out+="${c}"
+	done
+	printf '"%s"' "${out}"
+}
+
+# json_uint_or_null <s> - a non-negative integer as a JSON number, anything
+# else (the summary's '-' for "not applicable") as null.
+json_uint_or_null () {
+	if [[ "$1" =~ ^[0-9]+$ ]]; then printf '%s' "$((10#$1))"; else printf 'null'; fi
+}
+
+# summary_row_json - one inventory row's result as a JSON object.
+#
+# usage: summary_row_json <line> <db> <src-alias> <targ-alias> <rep-alias> \
+#            <src-hostport> <targ-hostport> <rep-hostport> <keep> \
+#            <status> <stage> <versions> <docs-updated> <seconds> <note>
+#
+#   keep      'none' or d/w/m/y
+#   status    ok | failed | not-run   (not-run: the run stopped before this row)
+#   stage     where a failed row failed: preflight | versioning | replicate, or empty
+#   versions, docs-updated, seconds   integers, or '-' / empty for null
+#
+# Servers are given as alias and host:port, never as a URL: a URL is one
+# redaction bug away from carrying a password, and this file is meant to be
+# copied to another machine.
+summary_row_json () {
+	local line="$1" db="$2" src="$3" targ="$4" rep="$5"
+	local src_h="$6" targ_h="$7" rep_h="$8" keep="$9"
+	local status="${10}" stage="${11}" versions="${12}" updated="${13}" secs="${14}" note="${15}"
+	local mirror=false
+	[ "${keep}" = "none" ] && mirror=true
+	printf '{"line":%s,"db":%s,"source":%s,"target":%s,"driver":%s,' \
+		"$(json_uint_or_null "${line}")" "$(json_quote "${db}")" "$(json_quote "${src}")" \
+		"$(json_quote "${targ}")" "$(json_quote "${rep}")"
+	printf '"source_host":%s,"target_host":%s,"driver_host":%s,' \
+		"$(json_quote "${src_h}")" "$(json_quote "${targ_h}")" "$(json_quote "${rep_h}")"
+	printf '"keep":%s,"mirror_only":%s,"status":%s,"stage":%s,' \
+		"$(json_quote "${keep}")" "${mirror}" "$(json_quote "${status}")" "$(json_quote "${stage}")"
+	printf '"versions":%s,"docs_updated":%s,"seconds":%s,"note":%s}' \
+		"$(json_uint_or_null "${versions}")" "$(json_uint_or_null "${updated}")" \
+		"$(json_uint_or_null "${secs}")" "$(json_quote "${note}")"
+}
+
 # couch_replicate <rep-svr> <source-url> <target-url> <continuous> [create_target]
 #
 # POSTs to <rep-svr>/_replicate. The rep-svr is the node that PERFORMS the

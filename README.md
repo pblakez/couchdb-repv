@@ -31,6 +31,7 @@ cloud,bak1,bak1,orders,7/5/12/7
   - [Picking `rep-svr`](#picking-rep-svr)
 - [Running it](#running-it)
 - [What a run looks like](#what-a-run-looks-like)
+  - [The run summary as JSON](#the-run-summary-as-json)
 - [Snapshots and retention](#snapshots-and-retention)
 - [Restoring from a snapshot](#restoring-from-a-snapshot)
 - [The component scripts](#the-component-scripts)
@@ -297,6 +298,7 @@ second job is a second command line with its own three files.
 | `--timeout SECONDS` | `60` | timeout for metadata requests |
 | `--rep-timeout SECONDS` | `86400` | timeout for the copy itself |
 | `--dblist-dir DIR` | off | also record each source server's `_all_dbs` into `DIR` |
+| `--summary-json FILE` | off | also write every row's result as one JSON document — see [The run summary as JSON](#the-run-summary-as-json) |
 | `--lock-file PATH` | one per inventory | run lock; pass `""` to disable |
 | `--allow-insecure-env` | off | permit a group/world-readable env file |
 
@@ -482,6 +484,49 @@ problems as `500`, not `4xx` — a missing source database comes back as
 
 **Passwords never appear.** Every log line is redacted: `http://admin:hunter2@h`
 prints as `http://***:***@h`, on screen and in syslog.
+
+### The run summary as JSON
+
+The `FIN:` lines are for a person reading the log; their spacing and wording
+may change. For a dashboard or a monitor, `--summary-json FILE` writes the same
+facts as one JSON document, replaced at the end of every run:
+
+```json
+{"format":"couchdb-repv-summary","format_version":1,"log_tag":"repv",
+ "inventory":"/root/couchdb-repv/repv-inventory.csv",
+ "started":"2026-08-25T02:05:01+10:00","finished":"2026-08-25T02:06:40+10:00",
+ "dry_run":false,"exit_code":0,"aborted":"",
+ "counts":{"rows":2,"processed":2,"failed":0,"mirror_only":1,"rejected":0},
+ "rows":[
+{"line":12,"db":"orders","source":"cloud","target":"bak1","driver":"bak1",
+ "source_host":"203.0.113.10:5984","target_host":"192.168.66.5:5984","driver_host":"192.168.66.5:5984",
+ "keep":"7/5/12/7","mirror_only":false,"status":"ok","stage":"",
+ "versions":6,"docs_updated":0,"seconds":4,"note":"already current"},
+{"line":13,"db":"orders_test","source":"cloud","target":"bak1","driver":"bak1",
+ "source_host":"203.0.113.10:5984","target_host":"192.168.66.5:5984","driver_host":"192.168.66.5:5984",
+ "keep":"none","mirror_only":true,"status":"ok","stage":"",
+ "versions":null,"docs_updated":3,"seconds":2,"note":"mirror-only, no snapshots"}
+]}
+```
+
+(Wrapped here for reading; the file has one row per line.)
+
+- **Every usable inventory row is listed**, not only the ones that ran. `status`
+  is `ok`, `failed` or `not-run` (the run stopped before reaching it); a failed
+  row says where in `stage` — `preflight`, `versioning` or `replicate` — and
+  why in `note`.
+- **Servers are aliases plus `host:port`, never a URL**, so the file holds no
+  credential and can be copied to another machine.
+- **It is written on the abort paths too.** When every row fails preflight, the
+  run stops before any work, and the summary is then the only per-row record:
+  `"aborted":"every row failed preflight"`, each row `failed` at `preflight`.
+- **It is reporting, not replication.** A missing directory or a failed write is
+  a warning; the run and its exit code are unchanged. The file is written to a
+  temporary name beside the target and renamed, so a reader never sees half of
+  it. A `--dry-run` writes one too, with `"dry_run":true`: a reader that
+  tracks real runs should skip those. A run that stops before it has usable
+  inventory rows (a usage or config error, an inventory with no usable row, or
+  another run holding the lock) leaves the previous file in place.
 
 ---
 
@@ -831,6 +876,9 @@ what happens to real data with nothing in the way:
   derivation and the `keep` grammar. An alias is what decides *which machine*
   gets written to, so it gets the same treatment.
 - **`test-env.sh`** — env parsing, token expansion, URL handling, redaction.
+- **`test-summary.sh`** — the `--summary-json` document: JSON quoting, the
+  per-row object, and a whole run that fails preflight against a closed port on
+  `127.0.0.1`, so the abort path is covered without a CouchDB.
 - **`test-docs.sh`** — that `README.html` was rendered from this `README.md`. See
   [This README](#this-readme).
 
