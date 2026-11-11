@@ -274,8 +274,9 @@ tests/run-all.sh          the above, then the live integration suite
 tests/integration.sh teardown   delete every zz_test_* database
 ```
 
-`tests/test-retention.sh`, `tests/test-env.sh` and `tests/test-inventory.sh` need nothing but bash and
-GNU date. `retention_select` is written as a pure function precisely so the only code that deletes
+`tests/test-retention.sh`, `tests/test-env.sh`, `tests/test-inventory.sh` and `tests/test-summary.sh`
+need nothing but bash and GNU date (`test-summary.sh` also parses its output with `python3` when there is
+one, and reaches only a closed port on `127.0.0.1`). `retention_select` is written as a pure function precisely so the only code that deletes
 data can be tested with no CouchDB in the way; `servers_load` / `resolve_server` / `parse_keep` are
 written the same way for the same reason, since an alias decides *which machine* gets written to.
 

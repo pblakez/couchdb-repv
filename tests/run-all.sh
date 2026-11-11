@@ -26,6 +26,7 @@ run "lint"            bash "${_here}/lint.sh"
 run "unit: retention" bash "${_here}/test-retention.sh"
 run "unit: env"       bash "${_here}/test-env.sh"
 run "unit: inventory" bash "${_here}/test-inventory.sh"
+run "unit: summary"   bash "${_here}/test-summary.sh"
 run "unit: docs"      bash "${_here}/test-docs.sh"
 
 if [ "${1:-}" != "--unit" ]; then

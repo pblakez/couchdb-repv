@@ -52,6 +52,7 @@ DRY_RUN="false"
 SLEEP_FOR=1
 MAX_DELETE=8
 DBLIST_DIR=""
+SUMMARY_JSON=""
 STRICT="false"
 SKIP_PREFLIGHT="false"
 ALLOW_INSECURE_ENV="false"
@@ -81,6 +82,9 @@ usage () {
 	  --max-delete N         per-database snapshot delete ceiling (default ${MAX_DELETE})
 	  --continuous true|false  replication mode (default false = one-shot)
 	  --dblist-dir DIR       also record each source server's _all_dbs into DIR
+	  --summary-json FILE    also write each row's result as one JSON document,
+	                         replaced at the end of every run that found usable
+	                         inventory rows, including the ones that abort
 	  --strict true|false    abort the whole run if any row fails preflight (default false)
 	  --skip-preflight       go straight to work without checking servers first
 	  --allow-insecure-env   permit a group/other-readable env file
@@ -144,6 +148,7 @@ while [ $# -gt 0 ]; do
 		--sleep)              SLEEP_FOR="${2:-}"; shift 2 ;;
 		--max-delete)         MAX_DELETE="${2:-}"; shift 2 ;;
 		--dblist-dir)         DBLIST_DIR="${2:-}"; shift 2 ;;
+		--summary-json)       SUMMARY_JSON="${2:-}"; shift 2 ;;
 		--timeout)            CDB_TIMEOUT="${2:-}"; shift 2 ;;
 		--rep-timeout)        CDB_REP_TIMEOUT="${2:-}"; shift 2 ;;
 		--lock-file)          LOCK_FILE="${2:-}"; LOCK_FILE_SET="true"; shift 2 ;;
@@ -179,6 +184,14 @@ is_uint "${MAX_DELETE}"  || fail_usage "--max-delete must be a non-negative inte
 is_uint "${CDB_TIMEOUT}" || fail_usage "--timeout must be a non-negative integer"
 is_uint "${CDB_REP_TIMEOUT}" || fail_usage "--rep-timeout must be a non-negative integer"
 [[ "${SLEEP_FOR}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || fail_usage "--sleep must be a non-negative number"
+
+# --summary-json is reporting, not replication: a mistyped path must never stop
+# the backups. So it is a warning, and the run goes ahead without the file -
+# whatever reads it will see the file go stale, which is the visible failure.
+if [ -n "${SUMMARY_JSON}" ] && [ ! -d "$(dirname -- "${SUMMARY_JSON}")" ]; then
+	log_warn "--summary-json: directory $(dirname -- "${SUMMARY_JSON}") does not exist - no summary will be written"
+	SUMMARY_JSON=""
+fi
 
 if [ "${LOCK_FILE_SET}" != "true" ]; then
 	_inv_key="$(basename "${INVENTORY}")"
@@ -226,6 +239,7 @@ cleanup_results () { [ -n "${RESULT_DIR:-}" ] && rm -rf -- "${RESULT_DIR}"; }
 trap cleanup_results EXIT
 
 TS_START="$(date '+%Y-%m-%d %H:%M:%S')"
+TS_START_ISO="$(date --iso-8601=seconds)"
 log "START inventory=${INVENTORY} servers=${SERVERS_FILE} env=${ENV_FILE} dry-run=${DRY_RUN} continuous=${CONTINUOUS} max-delete=${MAX_DELETE}"
 
 env_load "${ENV_FILE}" "${ALLOW_INSECURE_ENV}" || exit 1
@@ -354,8 +368,65 @@ if [ "${ROW_COUNT}" -eq 0 ]; then
 fi
 log "inventory: ${ROW_COUNT} usable row(s), ${PARSE_ERRORS} rejected"
 
+# Each usable row's outcome, indexed like ROW_*, for --summary-json. Unlike the
+# SUM_* table below, which lists only the rows that were processed, these cover
+# every row: a row that failed preflight or never ran is exactly the one a
+# reader of the summary needs to see.
+declare -a OUT_STATUS=() OUT_STAGE=() OUT_VERSIONS=() OUT_UPDATED=() OUT_SECS=() OUT_NOTE=()
+for (( r = 0; r < ROW_COUNT; r++ )); do
+	OUT_STATUS[r]="not-run"; OUT_STAGE[r]=""; OUT_VERSIONS[r]=""
+	OUT_UPDATED[r]=""; OUT_SECS[r]=""; OUT_NOTE[r]=""
+done
+
+# write_summary_json <exit-code> [why-aborted]
+#
+# Written to a temporary file beside the target and renamed over it, so a
+# reader never sees half a document. Failing to write is a warning: the
+# backups have already happened, and the run's own exit code must stay theirs.
+write_summary_json () {
+	local code="$1" aborted="${2:-}" tmp r first=1 failed=0 processed=0 mirror=0 keep
+	[ -n "${SUMMARY_JSON}" ] || return 0
+	[ "${CHECK}" = "true" ] && return 0
+	for (( r = 0; r < ROW_COUNT; r++ )); do
+		[ "${OUT_STATUS[r]}" = "failed" ] && failed=$((failed + 1))
+		[ "${OUT_STATUS[r]}" != "not-run" ] && [ "${OUT_STAGE[r]}" != "preflight" ] && processed=$((processed + 1))
+		[ "${ROW_MIRROR_ONLY[r]}" -eq 1 ] && mirror=$((mirror + 1))
+	done
+	tmp="${SUMMARY_JSON}.tmp.$$"
+	{
+		printf '{"format":"couchdb-repv-summary","format_version":1,'
+		printf '"log_tag":%s,"inventory":%s,' "$(json_quote "${CDB_LOG_TAG:-}")" "$(json_quote "${INVENTORY}")"
+		printf '"started":%s,"finished":%s,' "$(json_quote "${TS_START_ISO}")" "$(json_quote "$(date --iso-8601=seconds)")"
+		printf '"dry_run":%s,"exit_code":%s,"aborted":%s,' "${DRY_RUN}" "$(json_uint_or_null "${code}")" "$(json_quote "${aborted}")"
+		printf '"counts":{"rows":%s,"processed":%s,"failed":%s,"mirror_only":%s,"rejected":%s},' \
+			"${ROW_COUNT}" "${processed}" "${failed}" "${mirror}" "$(json_uint_or_null "${PARSE_ERRORS}")"
+		printf '"rows":['
+		for (( r = 0; r < ROW_COUNT; r++ )); do
+			if [ "${ROW_MIRROR_ONLY[r]}" -eq 1 ]; then keep="none"
+			else keep="${ROW_KD[r]}/${ROW_KW[r]}/${ROW_KM[r]}/${ROW_KY[r]}"; fi
+			[ "${first}" -eq 1 ] || printf ','
+			first=0
+			printf '\n'
+			summary_row_json "${ROW_LINE[r]}" "${ROW_DB[r]}" \
+				"$(server_label "${ROW_SRC[r]}")" "$(server_label "${ROW_TARG[r]}")" "$(server_label "${ROW_REP[r]}")" \
+				"$(host_of "${ROW_SRC[r]}")" "$(host_of "${ROW_TARG[r]}")" "$(host_of "${ROW_REP[r]}")" \
+				"${keep}" "${OUT_STATUS[r]}" "${OUT_STAGE[r]}" "${OUT_VERSIONS[r]}" "${OUT_UPDATED[r]}" \
+				"${OUT_SECS[r]}" "${OUT_NOTE[r]}"
+		done
+		printf '\n]}\n'
+	} > "${tmp}" 2>/dev/null || { rm -f -- "${tmp}" 2>/dev/null; log_warn "could not write the summary to ${SUMMARY_JSON}"; return 0; }
+	if mv -f -- "${tmp}" "${SUMMARY_JSON}" 2>/dev/null; then
+		log "summary written to ${SUMMARY_JSON}"
+	else
+		rm -f -- "${tmp}" 2>/dev/null
+		log_warn "could not write the summary to ${SUMMARY_JSON}"
+	fi
+	return 0
+}
+
 if [ "${PARSE_ERRORS}" -ne 0 ] && [ "${STRICT}" = "true" ]; then
 	log_err "--strict true and ${PARSE_ERRORS} row(s) failed to parse - aborting before any change"
+	write_summary_json 1 "strict: ${PARSE_ERRORS} inventory row(s) rejected"
 	exit 1
 fi
 
@@ -441,6 +512,7 @@ else
 	log "preflight: checking servers and source databases"
 
 	declare -A SERVER_OK=()
+	declare -A SERVER_WHY=()   # url -> short reason, for the summary; never the url itself
 	check_server () {
 		# Named by alias where the servers table knows one, so a preflight
 		# failure reads as the name the inventory actually wrote.
@@ -457,8 +529,10 @@ else
 		SERVER_OK["${url}"]=1
 		if [ "${CDB_CURL_RC}" -ne 0 ]; then
 			log_err "preflight FAIL ${label}: curl rc=${CDB_CURL_RC}: ${CDB_BODY}"
+			SERVER_WHY["${url}"]="${label} unreachable (curl rc=${CDB_CURL_RC})"
 		else
 			log_err "preflight FAIL ${label}: http=${CDB_HTTP_CODE}: $(redact "${CDB_BODY}")"
+			SERVER_WHY["${url}"]="${label} refused (http=${CDB_HTTP_CODE})"
 		fi
 		return 1
 	}
@@ -480,6 +554,14 @@ else
 		if [ "${bad}" -ne 0 ]; then
 			SKIP_ROW[r]=1
 			PREFLIGHT_BAD=$((PREFLIGHT_BAD + 1))
+			OUT_STATUS[r]="failed"; OUT_STAGE[r]="preflight"
+			why=""
+			for u in "${ROW_SRC[r]}" "${ROW_TARG[r]}" "${ROW_REP[r]}"; do
+				[ -n "${SERVER_WHY[${u}]+isset}" ] || continue
+				case "; ${why}; " in *"; ${SERVER_WHY[${u}]}; "*) continue ;; esac
+				why="${why:+${why}; }${SERVER_WHY[${u}]}"
+			done
+			OUT_NOTE[r]="${why:-source database not found on $(server_label "${ROW_SRC[r]}")}"
 		fi
 	done
 
@@ -487,10 +569,12 @@ else
 
 	if [ "${PREFLIGHT_BAD}" -eq "${ROW_COUNT}" ]; then
 		log_err "every row failed preflight - aborting before any change"
+		write_summary_json 1 "every row failed preflight"
 		exit 1
 	fi
 	if [ "${PREFLIGHT_BAD}" -ne 0 ] && [ "${STRICT}" = "true" ]; then
 		log_err "--strict true and ${PREFLIGHT_BAD} row(s) failed preflight - aborting before any change"
+		write_summary_json 1 "strict: ${PREFLIGHT_BAD} row(s) failed preflight"
 		exit 1
 	fi
 fi
@@ -639,6 +723,8 @@ for (( r = 0; r < ROW_COUNT; r++ )); do
 				SUM_DB+=("${db}"); SUM_SRC+=("${src_label}"); SUM_TARG+=("${targ_label}")
 				SUM_VERSIONS+=("${RES_ver_kept:--}"); SUM_UPDATED+=("-")
 				SUM_SECS+=("$(( $(date +%s) - ROW_T0 ))"); SUM_NOTE+=("VERSIONING FAILED, not replicated")
+				OUT_STATUS[r]="failed"; OUT_STAGE[r]="versioning"; OUT_VERSIONS[r]="${RES_ver_kept}"
+				OUT_SECS[r]="${SUM_SECS[-1]}"; OUT_NOTE[r]="versioning failed (rc ${ver_rc}), not replicated"
 				sleep "${SLEEP_FOR}"
 				continue
 				;;
@@ -696,6 +782,14 @@ for (( r = 0; r < ROW_COUNT; r++ )); do
 	SUM_DB+=("${db}"); SUM_SRC+=("${src_label}"); SUM_TARG+=("${targ_label}")
 	SUM_VERSIONS+=("${row_versions}"); SUM_UPDATED+=("${row_updated}")
 	SUM_SECS+=("${ROW_SECS}"); SUM_NOTE+=("${row_note}")
+
+	if [ "${rep_rc}" -eq 0 ]; then
+		OUT_STATUS[r]="ok"
+	else
+		OUT_STATUS[r]="failed"; OUT_STAGE[r]="replicate"
+	fi
+	OUT_VERSIONS[r]="${row_versions}"; OUT_UPDATED[r]="${row_updated}"
+	OUT_SECS[r]="${ROW_SECS}"; OUT_NOTE[r]="${row_note}"
 
 	sleep "${SLEEP_FOR}"
 done
@@ -756,7 +850,9 @@ if [ "${#REP_FAILED[@]}" -ne 0 ]; then
 	for f in "${REP_FAILED[@]}"; do
 		log_err "FIN:   FAIL ${f}"
 	done
+	write_summary_json 1
 	exit 1
 fi
 
+write_summary_json 0
 exit 0
